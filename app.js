@@ -72,8 +72,10 @@ let state = {
   grid: [],           // flat array of color indices (null = empty)
   selectedColor: 0,   // index into COLORS
   tool: "paint",
+  mode: "pattern", // "pattern" or "freeform"
   groutColor: "#c8c8c8",
-  groutWidth: 3,
+  groutWidthMM: 3.5, // mm (recommended 3-4mm)
+
   previewW: 2.0,  // meters
   previewH: 2.0,
   painting: false,
@@ -100,6 +102,18 @@ function init() {
   buildPresets();
   initGrid();
   bindEvents();
+  applyMode();
+}
+
+function applyMode() {
+  const isFreeform = state.mode === "freeform";
+  $(".preview-section").classList.toggle("hidden", isFreeform);
+  $("#grid-controls-tiles").classList.toggle("hidden", isFreeform);
+  $("#freeform-dims").classList.toggle("hidden", !isFreeform);
+  $(".editor-section h2").innerHTML = isFreeform
+    ? 'Freeform Editor <span class="hint">Paint your exact surface</span>'
+    : 'Pattern Editor <span class="hint">Click/drag to paint</span>';
+  renderGrid();
 }
 
 // ── Palette ───────────────────────────────────────────────────────────────────
@@ -171,10 +185,16 @@ function buildGroutPalette() {
   });
 }
 
+// Convert mm to display pixels (approximate: 1mm ≈ 1px at typical cell sizes)
+function groutPx() {
+  return Math.max(1, Math.round(state.groutWidthMM));
+}
+
 function applyGrout() {
-  gridEl.style.gap = state.groutWidth + "px";
+  const px = groutPx();
+  gridEl.style.gap = px + "px";
   gridEl.style.backgroundColor = state.groutColor;
-  gridEl.style.padding = state.groutWidth + "px";
+  gridEl.style.padding = px + "px";
 }
 
 // ── Grid ──────────────────────────────────────────────────────────────────────
@@ -186,10 +206,22 @@ function initGrid() {
 }
 
 function renderGrid() {
-  const { cols, rows } = state;
+  const { cols, rows, mode } = state;
   gridEl.innerHTML = "";
-  gridEl.style.gridTemplateColumns = `repeat(${cols}, 36px)`;
-  gridEl.style.gridTemplateRows = `repeat(${rows}, 36px)`;
+
+  // In freeform mode, shrink cells to fit the available space
+  let cellSize;
+  if (mode === "freeform") {
+    const gp = groutPx();
+    const availW = (gridEl.parentElement.clientWidth || 600) - gp * (cols + 1);
+    const availH = (window.innerHeight - 120) - gp * (rows + 1);
+    cellSize = Math.max(8, Math.min(36, Math.floor(Math.min(availW / cols, availH / rows))));
+  } else {
+    cellSize = 36;
+  }
+
+  gridEl.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+  gridEl.style.gridTemplateRows = `repeat(${rows}, ${cellSize}px)`;
   applyGrout();
 
   for (let i = 0; i < cols * rows; i++) {
@@ -199,8 +231,17 @@ function renderGrid() {
     setCellColor(cell, i);
     gridEl.appendChild(cell);
   }
-  renderPreview();
+  if (mode === "pattern") renderPreview();
+  updateGridDims();
   updateOrder();
+}
+
+function updateGridDims() {
+  const { cols, rows } = state;
+  const pitch = pitchCM();
+  const wM = ((cols * pitch) / 100).toFixed(2);
+  const hM = ((rows * pitch) / 100).toFixed(2);
+  $("#grid-dims").textContent = `${cols} × ${rows} tiles — ${wM} × ${hM} m`;
 }
 
 function setCellColor(cell, idx) {
@@ -360,25 +401,29 @@ function gradientPreset() {
 
 // Real dimensions: tile 11.55cm, joint ~3.5mm
 const TILE_CM = 11.55;
-const JOINT_CM = 0.35;
-const PITCH_CM = TILE_CM + JOINT_CM; // center-to-center
+
+function pitchCM() {
+  return TILE_CM + state.groutWidthMM / 10;
+}
 
 function renderPreview() {
-  const { cols, rows, grid, groutColor, groutWidth, previewW, previewH } = state;
+  const { cols, rows, grid, groutColor, groutWidthMM, previewW, previewH } = state;
 
   // How many individual tiles fit in the requested area
-  const tilesX = Math.ceil(previewW * 100 / PITCH_CM);
-  const tilesY = Math.ceil(previewH * 100 / PITCH_CM);
+  const tilesX = Math.ceil(previewW * 100 / pitchCM());
+  const tilesY = Math.ceil(previewH * 100 / pitchCM());
 
-  // Pixel sizes for rendering — scale tile size to fill available width
+  // Render at a size that fits the container, preserving aspect ratio
   const availW = previewCanvas.parentElement.clientWidth || 800;
-  const tileSize = Math.max(4, Math.floor((availW - (tilesX + 1)) / tilesX));
-  const gap = Math.max(1, Math.round(groutWidth * 0.5));
+  const gap = Math.max(1, Math.round(groutWidthMM * 0.5));
+  const tileSize = Math.max(2, Math.floor((availW - (tilesX + 1) * gap) / tilesX));
   const totalW = tilesX * (tileSize + gap) + gap;
   const totalH = tilesY * (tileSize + gap) + gap;
 
   previewCanvas.width = totalW;
   previewCanvas.height = totalH;
+  previewCanvas.style.width = availW + "px";
+  previewCanvas.style.height = Math.round(totalH * (availW / totalW)) + "px";
 
   // grout background
   previewCtx.fillStyle = groutColor;
@@ -404,6 +449,7 @@ function renderPreview() {
 // ── Order Summary ─────────────────────────────────────────────────────────────
 
 function updateOrder() {
+  saveToURL();
   const counts = {};
   state.grid.forEach((ci) => {
     if (ci === null) return;
@@ -453,21 +499,24 @@ function updateOrder() {
     </tr>
   `;
 
+  const chosenGrout = GROUT_COLORS.find((g) => g.hex === state.groutColor);
+  const chosenGroutName = chosenGrout ? chosenGrout.name : state.groutColor;
+
   meta.innerHTML = totalTiles > 0
-    ? `Coverage: <strong>${totalSqm} m²</strong> &middot; Weight: <strong>${totalWeight} kg</strong> &middot; Includes 8% waste factor for box calculation`
+    ? `Coverage: <strong>${totalSqm} m²</strong> &middot; Weight: <strong>${totalWeight} kg</strong> &middot; Joint: <strong>${state.groutWidthMM} mm</strong><br>Grout chosen: <strong>${chosenGroutName}</strong> <span class="swatch-cell" style="width:12px;height:12px;vertical-align:middle;background:${state.groutColor}${isLight(state.groutColor) ? ';box-shadow:inset 0 0 0 1px rgba(0,0,0,0.2)' : ''}"></span> &middot; Includes 8% waste factor for box calculation`
     : "Paint some tiles to see your order summary.";
 
   groutRec.innerHTML = groutSets.size > 0
-    ? "<strong>Recommended grouts:</strong> " + [...groutSets].join(" / ")
+    ? "<strong>Recommended grouts for colors used:</strong> " + [...groutSets].join(" &middot; ")
     : "";
 }
 
 // ── Export ─────────────────────────────────────────────────────────────────────
 
 function exportPNG() {
-  const { cols, rows, grid, groutColor, groutWidth } = state;
+  const { cols, rows, grid, groutColor, groutWidthMM } = state;
   const tileSize = 40;
-  const gap = groutWidth;
+  const gap = Math.max(1, Math.round(groutWidthMM));
   const w = cols * tileSize + (cols + 1) * gap;
   const h = rows * tileSize + (rows + 1) * gap;
 
@@ -526,6 +575,11 @@ function exportCSV() {
 // ── Event Binding ─────────────────────────────────────────────────────────────
 
 function bindEvents() {
+  // Sidebar toggle
+  $("#sidebar-toggle").addEventListener("click", () => {
+    $(".sidebar").classList.toggle("collapsed");
+  });
+
   // Grid painting
   gridEl.addEventListener("mousedown", (e) => {
     const cell = e.target.closest(".cell");
@@ -564,6 +618,28 @@ function bindEvents() {
 
   gridEl.addEventListener("contextmenu", (e) => e.preventDefault());
 
+  // Mode toggle
+  $$(".mode-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.mode = btn.dataset.mode;
+      $$(".mode-btn").forEach((b) => b.classList.toggle("active", b.dataset.mode === state.mode));
+      applyMode();
+    });
+  });
+
+  // Freeform meters apply
+  $("#apply-meters").addEventListener("click", () => {
+    const w = Math.min(5, Math.max(0.2, +$("#free-width").value || 1));
+    const h = Math.min(5, Math.max(0.2, +$("#free-height").value || 1));
+    $("#free-width").value = w;
+    $("#free-height").value = h;
+    const cols = Math.ceil(w * 100 / pitchCM());
+    const rows = Math.ceil(h * 100 / pitchCM());
+    state.cols = cols;
+    state.rows = rows;
+    initGrid();
+  });
+
   // Tools
   $$(".tool-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -585,8 +661,8 @@ function bindEvents() {
 
   // Grout width
   $("#grout-width").addEventListener("input", (e) => {
-    state.groutWidth = +e.target.value;
-    $("#grout-width-label").textContent = e.target.value + "px";
+    state.groutWidthMM = +e.target.value;
+    $("#grout-width-label").textContent = e.target.value + " mm";
     applyGrout();
     renderPreview();
   });
@@ -645,6 +721,61 @@ function bindEvents() {
   });
 }
 
+// ── URL State (share via link) ────────────────────────────────────────────────
+
+function saveToURL() {
+  const { cols, rows, grid, groutColor, groutWidthMM } = state;
+  // Encode grid as base64: each cell is a byte (0-40 = color index, 255 = empty)
+  const bytes = new Uint8Array(grid.length);
+  grid.forEach((ci, i) => { bytes[i] = ci !== null ? ci : 255; });
+  const b64 = btoa(String.fromCharCode(...bytes));
+  const params = new URLSearchParams();
+  params.set("c", cols);
+  params.set("r", rows);
+  params.set("g", b64);
+  params.set("gc", groutColor);
+  params.set("gw", groutWidthMM);
+  history.replaceState(null, "", "?" + params.toString());
+}
+
+function loadFromURL() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has("g")) return false;
+  const cols = Math.min(32, Math.max(2, +params.get("c") || 6));
+  const rows = Math.min(32, Math.max(2, +params.get("r") || 6));
+  const b64 = params.get("g");
+  try {
+    const str = atob(b64);
+    const bytes = new Uint8Array(str.length);
+    for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i);
+    state.cols = cols;
+    state.rows = rows;
+    state.grid = Array.from(bytes).map((b) => b === 255 ? null : b);
+    // pad or trim if size doesn't match
+    const expected = cols * rows;
+    if (state.grid.length < expected) {
+      state.grid.push(...new Array(expected - state.grid.length).fill(null));
+    } else if (state.grid.length > expected) {
+      state.grid.length = expected;
+    }
+  } catch { return false; }
+  if (params.has("gc")) state.groutColor = params.get("gc");
+  if (params.has("gw")) state.groutWidthMM = +params.get("gw") || 3.5;
+  $("#cols").value = state.cols;
+  $("#rows").value = state.rows;
+  $("#grout-width").value = state.groutWidthMM;
+  $("#grout-width-label").textContent = state.groutWidthMM + " mm";
+  return true;
+}
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-init();
+if (loadFromURL()) {
+  buildPalette();
+  buildGroutPalette();
+  buildPresets();
+  renderGrid();
+  bindEvents();
+} else {
+  init();
+}

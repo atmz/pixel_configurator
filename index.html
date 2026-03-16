@@ -8,7 +8,10 @@
 </head>
 <body>
   <header>
-    <h1>Pixel41 Tile Configurator</h1>
+    <div class="header-left">
+      <button id="sidebar-toggle" class="sidebar-toggle" title="Toggle sidebar">&#9776;</button>
+      <h1>Pixel41 Tile Configurator</h1>
+    </div>
     <div class="header-actions">
       <button id="export-png" title="Export pattern as PNG">Export PNG</button>
       <button id="export-csv" title="Export order summary as CSV">Export CSV</button>
@@ -28,14 +31,22 @@
         <div id="grout-palette" class="grout-palette"></div>
         <label class="range-label">
           Joint width
-          <input type="range" id="grout-width" min="1" max="6" value="3">
-          <span id="grout-width-label">3px</span>
+          <input type="range" id="grout-width" min="0" max="8" value="3.5" step="0.5">
+          <span id="grout-width-label">3.5 mm</span>
         </label>
       </section>
 
       <section class="panel">
+        <h2>Mode</h2>
+        <div class="mode-toggle">
+          <button class="mode-btn active" data-mode="pattern">Pattern</button>
+          <button class="mode-btn" data-mode="freeform">Freeform</button>
+        </div>
+      </section>
+
+      <section class="panel">
         <h2>Grid Size</h2>
-        <div class="grid-controls">
+        <div class="grid-controls" id="grid-controls-tiles">
           <label>
             Cols
             <input type="number" id="cols" value="6" min="2" max="32">
@@ -75,8 +86,22 @@
 
     <div class="content-area">
       <section class="editor-section">
-        <h2>Pattern Editor <span class="hint">Click/drag to paint</span></h2>
+        <div class="editor-header">
+          <h2>Pattern Editor <span class="hint">Click/drag to paint</span></h2>
+          <div class="preview-dims hidden" id="freeform-dims">
+            <label class="dim-label">
+              W
+              <input type="number" id="free-width" value="1.0" min="0.2" max="5" step="0.1"> m
+            </label>
+            <label class="dim-label">
+              H
+              <input type="number" id="free-height" value="1.0" min="0.2" max="5" step="0.1"> m
+            </label>
+            <button id="apply-meters" class="apply-meters-btn">Apply</button>
+          </div>
+        </div>
         <div id="grid-container" class="grid-container"></div>
+        <div id="grid-dims" class="grid-dims"></div>
       </section>
 
       <section class="preview-section">
