@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pixel41 Tile Configurator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Pixel41 Tile Configurator</h1>
+    <div class="header-actions">
+      <button id="export-png" title="Export pattern as PNG">Export PNG</button>
+      <button id="export-csv" title="Export order summary as CSV">Export CSV</button>
+    </div>
+  </header>
+
+  <main>
+    <aside class="sidebar">
+      <section class="panel">
+        <h2>Colors</h2>
+        <div id="palette" class="palette"></div>
+        <div id="color-info" class="color-info">Select a color</div>
+      </section>
+
+      <section class="panel">
+        <h2>Grout</h2>
+        <div id="grout-palette" class="grout-palette"></div>
+        <label class="range-label">
+          Joint width
+          <input type="range" id="grout-width" min="1" max="6" value="3">
+          <span id="grout-width-label">3px</span>
+        </label>
+      </section>
+
+      <section class="panel">
+        <h2>Grid Size</h2>
+        <div class="grid-controls">
+          <label>
+            Cols
+            <input type="number" id="cols" value="6" min="2" max="32">
+          </label>
+          <label>
+            Rows
+            <input type="number" id="rows" value="6" min="2" max="32">
+          </label>
+          <button id="apply-size">Apply</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Tools</h2>
+        <div class="tools">
+          <button class="tool-btn active" data-tool="paint" title="Paint (P)">&#9998; Paint</button>
+          <button class="tool-btn" data-tool="fill" title="Bucket Fill (F)">&#9726; Fill</button>
+          <button class="tool-btn" data-tool="erase" title="Eraser (E)">&#9003; Erase</button>
+          <button class="tool-btn" data-tool="eyedrop" title="Eyedropper (I)">&#9738; Pick</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Presets</h2>
+        <div class="presets" id="presets"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Actions</h2>
+        <div class="actions">
+          <button id="clear-all">Clear All</button>
+          <button id="fill-all">Fill All</button>
+          <button id="random-fill">Randomize</button>
+        </div>
+      </section>
+    </aside>
+
+    <div class="content-area">
+      <section class="editor-section">
+        <h2>Pattern Editor <span class="hint">Click/drag to paint</span></h2>
+        <div id="grid-container" class="grid-container"></div>
+      </section>
+
+      <section class="preview-section">
+        <div class="preview-header">
+          <h2>Tiled Preview</h2>
+          <div class="preview-dims">
+            <label class="dim-label">
+              W
+              <input type="number" id="preview-width" value="2.0" min="0.5" max="10" step="0.5"> m
+            </label>
+            <label class="dim-label">
+              H
+              <input type="number" id="preview-height" value="2.0" min="0.5" max="10" step="0.5"> m
+            </label>
+          </div>
+        </div>
+        <canvas id="preview-canvas"></canvas>
+      </section>
+
+      <section class="order-section">
+        <h2>Order Summary</h2>
+        <div class="order-meta" id="order-meta"></div>
+        <table id="order-table">
+          <thead>
+            <tr>
+              <th>Swatch</th>
+              <th>Color</th>
+              <th>Product Code</th>
+              <th>Tiles</th>
+              <th>Boxes (28/box)</th>
+              <th>Recommended Grout</th>
+            </tr>
+          </thead>
+          <tbody id="order-body"></tbody>
+          <tfoot id="order-foot"></tfoot>
+        </table>
+        <div id="grout-recommendation" class="grout-recommendation"></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
