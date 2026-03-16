@@ -103,6 +103,17 @@
   max-height: 500px;
 }
 
+/* Beach theme select */
+select {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
 /* Pattern grid in sidebar */
 .pattern-grid-editor {
   margin-top: 6px;

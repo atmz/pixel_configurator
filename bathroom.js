@@ -507,7 +507,7 @@ function render3D() {
   const camX = centerX - Math.sin(yaw) * dist;
   const camY = centerY - Math.sin(pitch) * dist;
   const camZ = centerZ - Math.cos(yaw) * dist;
-  const fov = W * 0.85;
+  const fov = Math.min(W, H) * 1.2;
 
   const cosY = Math.cos(yaw), sinY = Math.sin(yaw);
   const cosP = Math.cos(pitch), sinP = Math.sin(pitch);
@@ -652,6 +652,7 @@ function render3D() {
 // ── Order Summary ─────────────────────────────────────────────────────────────
 
 function updateOrder() {
+  saveToURL();
   const counts = {};
   let totalTileable = 0;
 
@@ -730,6 +731,7 @@ function initPattern() {
 const W = 20, R = 0, C = 13, T = 28, M = 39, BK = 24, OC = 27, LM = 15;
 const LOB = 1, COR = 2, TER = 11, TOB = 12, SND = 17, ALM = 19;
 const GRY = 22, NOT = 26, POL = 29, CLD = 31, PCK = 38;
+const VAN = 16, NUD = 9, PWD = 10, CER = 30, PRL = 21;
 
 const PATTERN_PRESETS = [
   {
@@ -1181,41 +1183,574 @@ const ROOM_PRESETS = [
   },
   {
     name: "Cyprus",
-    desc: "Whitewashed walls, terracotta, Mediterranean blue",
+    desc: "Terracotta floor fading into walls, Tuareg north",
     apply() {
-      const pitch = pitchCM();
-      // Walls: whitewashed with Mediterranean blue accent band at ~110cm
-      const bandLow = Math.floor(100 / pitch);
-      const bandHigh = Math.floor(120 / pitch);
-      const baseLow = Math.floor(40 / pitch); // low terracotta border
-      for (let si = 1; si < 5; si++) {
+      cyprusFloor();
+      // North wall: cyprus base fading to Tuareg
+      cyprusWallBase(1, T);
+      // Other walls: cyprus base fading to white
+      cyprusWallBase(2, W);
+      cyprusWallBase(3, W);
+      cyprusWallBase(4, W);
+    },
+  },
+];
+
+// ── Beach Themes ──────────────────────────────────────────────────────────────
+
+// Shared: Cyprus floor (rotated 90°)
+function cyprusTile(c, r) {
+  const v = (r * 13 + c * 17) % 12;
+  if (v < 1) return TOB;
+  if (v < 4) return TER;
+  if (v < 6) return COR;
+  return SND;
+}
+
+function cyprusFloor() {
+  fillSurface(0, (c, r) => cyprusTile(c, r));
+}
+
+// Cyprus pattern fading into wall color over 3 rows from the floor
+function cyprusWallBase(si, fadeToColor) {
+  fillSurface(si, (c, r, cols, rows) => {
+    const rf = rowFromFloor(r, rows);
+    if (rf < 2) return cyprusTile(c, r);
+    if (rf === 2) {
+      // ~40% still cyprus
+      return ((c * 7 + r * 3) % 10) < 4 ? cyprusTile(c, r) : fadeToColor;
+    }
+    if (rf === 3) {
+      // ~15% cyprus
+      return ((c * 11 + r * 5) % 10) < 2 ? cyprusTile(c, r) : fadeToColor;
+    }
+    return fadeToColor;
+  });
+}
+
+// Draw a sun (circle + optional rays) on a surface
+// cx, cy = center in grid coords, radius in tiles
+function drawSun(si, cx, cy, radius, coreColor, midColor, outerColor, rayColor) {
+  const sdata = state.surfaces[si];
+  const { cols, rows, grid, blocked } = sdata;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const idx = r * cols + c;
+      if (blocked[idx]) continue;
+      const dx = c - cx;
+      const dy = r - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < radius * 0.4) {
+        grid[idx] = coreColor;
+      } else if (dist < radius * 0.7) {
+        grid[idx] = midColor;
+      } else if (dist < radius) {
+        grid[idx] = outerColor;
+      } else if (rayColor !== null && dist < radius * 1.6) {
+        // Rays: 8 directions
+        const angle = Math.atan2(dy, dx);
+        const sector = ((angle / Math.PI * 4) + 8) % 8;
+        if (Math.abs(sector - Math.round(sector)) < 0.25) {
+          grid[idx] = rayColor;
+        }
+      }
+    }
+  }
+}
+
+// Sea fade on north wall: deep at bottom, light at top
+function seaFade(si, colors) {
+  // colors = array from deep (bottom) to light (top/sky)
+  fillSurface(si, (c, r, cols, rows) => {
+    const rf = rowFromFloor(r, rows);
+    const t = rf / rows; // 0 = floor, 1 = ceiling
+    const idx = Math.floor(t * colors.length);
+    // Add some wave noise
+    const wave = Math.sin(c * 0.8 + rf * 0.3) * 0.5;
+    const adjIdx = Math.max(0, Math.min(colors.length - 1, Math.round(idx + wave)));
+    return colors[adjIdx];
+  });
+}
+
+const BEACH_THEMES = [
+  {
+    // Beach Day — bright vivid blue, bold sun
+    name: "Beach Day",
+    apply() {
+      cyprusFloor();
+      // North wall: vivid sea fade
+      seaFade(1, [OC, OC, OC, T, T, POL, POL, CLD, CLD, W, W, W]);
+      // South wall: warm sandy
+      fillSurface(2, (c, r, cols, rows) => {
+        const rf = rowFromFloor(r, rows);
+        return rf < 3 ? SND : (rf < 5 ? ALM : W);
+      });
+      // East wall: sun
+      fillSurface(3, () => W);
+      const es = state.surfaces[3];
+      const sunCX = Math.floor(es.cols * 0.4);
+      const sunCY = Math.floor(es.rows * 0.35);
+      drawSun(3, sunCX, sunCY, 4, LM, VAN, C, SND);
+      // West wall: clean white with subtle sand at base
+      fillSurface(4, (c, r, cols, rows) => {
+        return rowFromFloor(r, rows) < 2 ? SND : W;
+      });
+    },
+  },
+  {
+    // Sunset — warm horizon, amber glow
+    name: "Sunset",
+    apply() {
+      cyprusFloor();
+      // North wall: sunset sea — warm oranges fading through blue
+      seaFade(1, [OC, OC, NOT, NOT, T, CER, COR, LOB, LOB, NUD, VAN, W]);
+      // South wall: warm gradient
+      fillSurface(2, (c, r, cols, rows) => {
+        const rf = rowFromFloor(r, rows);
+        if (rf < 2) return TER;
+        if (rf < 4) return SND;
+        if (rf < 6) return NUD;
+        return (rf < rows - 2) ? W : VAN;
+      });
+      // East wall: amber sun
+      fillSurface(3, (c, r, cols, rows) => {
+        return rowFromFloor(r, rows) < 2 ? SND : W;
+      });
+      const es2 = state.surfaces[3];
+      drawSun(3, Math.floor(es2.cols * 0.4), Math.floor(es2.rows * 0.35), 5, LOB, C, NUD, VAN);
+      // West wall: ambient warm
+      fillSurface(4, (c, r, cols, rows) => {
+        return rowFromFloor(r, rows) < 3 ? SND : ((c + r) % 11 === 0 ? VAN : W);
+      });
+    },
+  },
+  {
+    // Aegean — deep blues, golden disc
+    name: "Aegean",
+    apply() {
+      cyprusFloor();
+      // North wall: deep ocean
+      seaFade(1, [OC, OC, OC, OC, NOT, T, T, POL, CER, CLD, W, W]);
+      // South & West: white with ocean base
+      for (const si of [2, 4]) {
         fillSurface(si, (c, r, cols, rows) => {
           const rf = rowFromFloor(r, rows);
-          // Terracotta base course at floor
-          if (rf < baseLow) {
-            return (c + rf) % 5 === 0 ? TOB : TER;
-          }
-          // Mediterranean blue accent band
-          if (rf >= bandLow && rf < bandHigh) {
-            if (rf === bandLow || rf === bandHigh - 1) return PCK; // darker edge
-            return OC;
-          }
-          // Whitewashed wall — warm whites
-          if ((c * 3 + r * 7) % 23 === 0) return ALM; // subtle variation
+          if (rf < 2) return OC;
+          if (rf < 4) return T;
           return W;
         });
       }
-      // Floor: warm terracotta/sand pattern
-      fillSurface(0, (c, r) => {
-        const v = (c * 13 + r * 17) % 12;
-        if (v < 1) return TOB;
-        if (v < 4) return TER;
-        if (v < 6) return COR;
-        return SND;
+      // East wall: golden sun disc, no rays — cleaner
+      fillSurface(3, (c, r, cols, rows) => {
+        return rowFromFloor(r, rows) < 3 ? T : W;
+      });
+      const es3 = state.surfaces[3];
+      drawSun(3, Math.floor(es3.cols * 0.4), Math.floor(es3.rows * 0.35), 4, C, VAN, SND, null);
+    },
+  },
+  {
+    // Dusk — moody dark blues, coral sky
+    name: "Dusk",
+    apply() {
+      cyprusFloor();
+      // North wall: dark moody sea with coral/pink horizon
+      seaFade(1, [BK, OC, OC, NOT, NOT, OC, COR, COR, LOB, NUD, PWD, PRL]);
+      // South & West: subtle dusk
+      for (const si of [2, 4]) {
+        fillSurface(si, (c, r, cols, rows) => {
+          const rf = rowFromFloor(r, rows);
+          if (rf < 2) return NOT;
+          if (rf < 4) return CER;
+          return ((c + r * 3) % 17 === 0) ? PWD : W;
+        });
+      }
+      // East wall: low warm glow
+      fillSurface(3, (c, r, cols, rows) => {
+        return rowFromFloor(r, rows) < 2 ? NOT : W;
+      });
+      const es4 = state.surfaces[3];
+      drawSun(3, Math.floor(es4.cols * 0.4), Math.floor(es4.rows * 0.35), 3, LOB, COR, NUD, null);
+    },
+  },
+  {
+    // Minimal — clean, just a hint
+    name: "Minimal",
+    apply() {
+      cyprusFloor();
+      // North wall: very subtle — just a few blue rows at the bottom
+      fillSurface(1, (c, r, cols, rows) => {
+        const rf = rowFromFloor(r, rows);
+        if (rf < 1) return T;
+        if (rf < 3) return POL;
+        if (rf < 4) return CLD;
+        return W;
+      });
+      // Other walls: all white, sand base course
+      for (const si of [2, 4]) {
+        fillSurface(si, (c, r, cols, rows) => {
+          return rowFromFloor(r, rows) < 1 ? SND : W;
+        });
+      }
+      // East wall: tiny sun accent — just 3 Lemon tiles in a cluster
+      fillSurface(3, (c, r, cols, rows) => {
+        return rowFromFloor(r, rows) < 1 ? SND : W;
+      });
+      const es5 = state.surfaces[3];
+      const { cols, rows, grid, blocked } = es5;
+      const cx = Math.floor(cols * 0.4);
+      const cy = Math.floor(rows * 0.35);
+      [[0,0],[0,1],[1,0]].forEach(([dr, dc]) => {
+        const idx = (cy + dr) * cols + (cx + dc);
+        if (idx >= 0 && idx < grid.length && !blocked[idx]) grid[idx] = LM;
       });
     },
   },
 ];
+
+// ── Lines Themes ──────────────────────────────────────────────────────────────
+
+// Helper: draw a line on a surface grid (Bresenham)
+function drawLine(si, c0, r0, c1, r1, color) {
+  const sdata = state.surfaces[si];
+  const { cols, rows, grid, blocked } = sdata;
+  let dc = Math.abs(c1 - c0), dr = Math.abs(r1 - r0);
+  let sc = c0 < c1 ? 1 : -1, sr = r0 < r1 ? 1 : -1;
+  let err = dc - dr;
+  let c = c0, r = r0;
+  while (true) {
+    const idx = r * cols + c;
+    if (r >= 0 && r < rows && c >= 0 && c < cols && !blocked[idx]) {
+      grid[idx] = color;
+    }
+    if (c === c1 && r === r1) break;
+    const e2 = 2 * err;
+    if (e2 > -dr) { err -= dr; c += sc; }
+    if (e2 < dc) { err += dc; r += sr; }
+  }
+}
+
+// Helper: draw a thick line (line + neighbors)
+function drawThickLine(si, c0, r0, c1, r1, color, thickness) {
+  for (let d = -Math.floor(thickness / 2); d <= Math.floor(thickness / 2); d++) {
+    const isHoriz = Math.abs(c1 - c0) > Math.abs(r1 - r0);
+    if (isHoriz) drawLine(si, c0, r0 + d, c1, r1 + d, color);
+    else drawLine(si, c0 + d, r0, c1 + d, r1, color);
+  }
+}
+
+const LINES_THEMES = [
+  {
+    name: "Pathways",
+    apply() {
+      // White base everywhere
+      for (let si = 0; si < 5; si++) fillSurface(si, () => W);
+      cyprusFloor();
+
+      const floorData = state.surfaces[0];
+      const fc = floorData.cols, fr = floorData.rows;
+
+      // Door is on south wall (east side). Entry point on floor: SE corner
+      const doorC = fc - 3, doorR = fr - 1;
+
+      // Red path: door → straight north across floor → up north wall
+      for (let r = 0; r < fr; r++) {
+        const idx = r * fc + doorC;
+        if (!floorData.blocked[idx]) floorData.grid[idx] = R;
+      }
+      // Continue up north wall (index 1) — col position maps to same x
+      const nw = state.surfaces[1];
+      for (let r = 0; r < nw.rows; r++) {
+        const idx = r * nw.cols + doorC;
+        if (!nw.blocked[idx]) nw.grid[idx] = R;
+      }
+
+      // Tuareg path: door → west across floor → up west wall
+      const turnR = fr - 4;
+      drawLine(0, doorC, doorR, doorC, turnR, T);
+      drawLine(0, doorC, turnR, 0, turnR, T);
+      // Up west wall — turnR maps to a z-position on the west wall
+      // West wall (idx 4): col 0 = south end; turnR on floor = z position
+      const westWallCol = fr - 1 - turnR; // flip because west wall col 0=south
+      const ww = state.surfaces[4];
+      for (let r = 0; r < ww.rows; r++) {
+        const idx = r * ww.cols + westWallCol;
+        if (!ww.blocked[idx]) ww.grid[idx] = T;
+      }
+
+      // Curry path: door → diagonal to center → east to east wall → up
+      const midC = Math.floor(fc / 2), midR = Math.floor(fr / 2);
+      drawLine(0, doorC, doorR - 2, midC, midR, C);
+      drawLine(0, midC, midR, fc - 1, midR, C);
+      // Up east wall (idx 3): col maps to z (mirrored, col 0 = north)
+      const eastWallCol = fr - 1 - midR;
+      const ew = state.surfaces[3];
+      for (let r = 0; r < ew.rows; r++) {
+        const idx = r * ew.cols + eastWallCol;
+        if (!ew.blocked[idx]) ew.grid[idx] = C;
+      }
+
+      // Marine path: small branch from center to NW corner
+      drawLine(0, midC, midR, 2, 2, M);
+    },
+  },
+  {
+    name: "Circuit",
+    apply() {
+      // White base
+      for (let si = 0; si < 5; si++) fillSurface(si, () => W);
+      cyprusFloor();
+
+      // Draw PCB-style right-angle traces on each wall
+      const colors = [R, T, C, M];
+      for (let si = 1; si < 5; si++) {
+        const sdata = state.surfaces[si];
+        const { cols, rows, grid, blocked } = sdata;
+        let seed = si * 4721;
+        const color = colors[si - 1];
+
+        // Draw 3-4 traces per wall
+        for (let t = 0; t < 4; t++) {
+          seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+          let c = seed % cols;
+          seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+          let r = seed % rows;
+          // Random walk with right angles
+          let dir = 0; // 0=right, 1=down, 2=left, 3=up
+          for (let step = 0; step < 30; step++) {
+            const idx = r * cols + c;
+            if (r >= 0 && r < rows && c >= 0 && c < cols && !blocked[idx]) {
+              grid[idx] = color;
+            }
+            // Advance
+            seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+            if (seed % 4 === 0) dir = (dir + 1) % 4; // turn
+            if (dir === 0) c++;
+            else if (dir === 1) r++;
+            else if (dir === 2) c--;
+            else r--;
+            c = Math.max(0, Math.min(cols - 1, c));
+            r = Math.max(0, Math.min(rows - 1, r));
+          }
+
+          // Draw a "pad" (2x2 node) at start and end
+          for (let dr = 0; dr < 2; dr++) {
+            for (let dc = 0; dc < 2; dc++) {
+              const pr = r + dr, pc = c + dc;
+              if (pr < rows && pc < cols) {
+                const pidx = pr * cols + pc;
+                if (!blocked[pidx]) grid[pidx] = color;
+              }
+            }
+          }
+        }
+      }
+
+      // Floor: circuit traces too
+      const fd = state.surfaces[0];
+      const fColors = [R, T, C, M];
+      // Horizontal and vertical traces
+      for (let i = 0; i < 4; i++) {
+        const pos = Math.floor((i + 1) * fd.rows / 5);
+        for (let c = 0; c < fd.cols; c++) {
+          const idx = pos * fd.cols + c;
+          if (!fd.blocked[idx]) fd.grid[idx] = fColors[i];
+        }
+      }
+      for (let i = 0; i < 3; i++) {
+        const pos = Math.floor((i + 1) * fd.cols / 4);
+        for (let r = 0; r < fd.rows; r++) {
+          const idx = r * fd.cols + pos;
+          if (!fd.blocked[idx]) fd.grid[idx] = fColors[i];
+        }
+      }
+    },
+  },
+  {
+    name: "Contour",
+    apply() {
+      // White base, cyprus floor
+      for (let si = 0; si < 5; si++) fillSurface(si, () => W);
+      cyprusFloor();
+
+      // Horizontal contour lines at different heights, with wave offsets
+      const contours = [
+        { heightCM: 30, color: M },
+        { heightCM: 70, color: T },
+        { heightCM: 120, color: C },
+        { heightCM: 170, color: R },
+        { heightCM: 210, color: T },
+      ];
+
+      const pitch = pitchCM();
+      for (let si = 1; si < 5; si++) {
+        const sdata = state.surfaces[si];
+        const { cols, rows, grid, blocked } = sdata;
+
+        contours.forEach((contour) => {
+          const baseRow = rows - 1 - Math.floor(contour.heightCM / pitch);
+          for (let c = 0; c < cols; c++) {
+            // Sine wave offset for organic feel
+            const wave = Math.round(Math.sin(c * 0.6 + si * 2) * 1.5);
+            const r = baseRow + wave;
+            if (r >= 0 && r < rows) {
+              const idx = r * cols + c;
+              if (!blocked[idx]) grid[idx] = contour.color;
+            }
+          }
+        });
+      }
+
+      // Floor: concentric contour rectangles
+      const fd = state.surfaces[0];
+      const floorColors = [M, T, C, R];
+      for (let ring = 0; ring < 4; ring++) {
+        const color = floorColors[ring];
+        const inset = ring * 3 + 1;
+        for (let c = inset; c < fd.cols - inset; c++) {
+          [inset, fd.rows - 1 - inset].forEach((r) => {
+            const idx = r * fd.cols + c;
+            if (!fd.blocked[idx]) fd.grid[idx] = color;
+          });
+        }
+        for (let r = inset; r < fd.rows - inset; r++) {
+          [inset, fd.cols - 1 - inset].forEach((c) => {
+            const idx = r * fd.cols + c;
+            if (!fd.blocked[idx]) fd.grid[idx] = color;
+          });
+        }
+      }
+    },
+  },
+  {
+    name: "Snake",
+    apply() {
+      // White base, cyprus floor
+      for (let si = 0; si < 5; si++) fillSurface(si, () => W);
+      cyprusFloor();
+
+      // A continuous snake line that goes: south wall bottom → up → across ceiling-ish
+      // → down north wall → across floor, zigzagging
+      const colors = [R, C, T, M];
+      let colorIdx = 0;
+
+      // South wall (idx 2): zigzag from bottom-right to top-left
+      const sw = state.surfaces[2];
+      let sc = sw.cols - 3, sr = sw.rows - 1;
+      let sdir = -1; // going up
+      while (sr >= 0) {
+        const idx = sr * sw.cols + sc;
+        if (sc >= 0 && sc < sw.cols && !sw.blocked[idx]) {
+          sw.grid[idx] = colors[colorIdx % 4];
+        }
+        sr--;
+        if (sr % 4 === 0) { sc += sdir * 3; sdir *= -1; colorIdx++; }
+      }
+
+      // East wall (idx 3): horizontal zigzag
+      const ewData = state.surfaces[3];
+      let ec = 0, er = 2;
+      let edir = 1;
+      while (er < ewData.rows - 1) {
+        const idx = er * ewData.cols + ec;
+        if (ec >= 0 && ec < ewData.cols && !ewData.blocked[idx]) {
+          ewData.grid[idx] = colors[colorIdx % 4];
+        }
+        ec += edir;
+        if (ec >= ewData.cols - 1 || ec <= 0) {
+          edir *= -1;
+          er += 3;
+          colorIdx++;
+        }
+      }
+
+      // North wall (idx 1): zigzag top to bottom
+      const nwData = state.surfaces[1];
+      let nc = 2, nr = 0;
+      let ndir = 1;
+      while (nr < nwData.rows) {
+        const idx = nr * nwData.cols + nc;
+        if (nc >= 0 && nc < nwData.cols && !nwData.blocked[idx]) {
+          nwData.grid[idx] = colors[colorIdx % 4];
+        }
+        nr++;
+        if (nr % 5 === 0) { nc += ndir * 4; ndir *= -1; colorIdx++; }
+      }
+
+      // West wall (idx 4): vertical zigzag
+      const wwData = state.surfaces[4];
+      let wc = wwData.cols - 2, wr = wwData.rows - 1;
+      let wdir = -1;
+      while (wr >= 0) {
+        const idx = wr * wwData.cols + wc;
+        if (wc >= 0 && wc < wwData.cols && !wwData.blocked[idx]) {
+          wwData.grid[idx] = colors[colorIdx % 4];
+        }
+        wr--;
+        if (wr % 4 === 0) { wc += wdir * 3; wdir *= -1; colorIdx++; }
+      }
+    },
+  },
+  {
+    name: "Ribbon",
+    apply() {
+      // White base, cyprus floor
+      for (let si = 0; si < 5; si++) fillSurface(si, () => W);
+      cyprusFloor();
+
+      // Diagonal ribbon wrapping around the room
+      // Each wall gets a diagonal stripe that connects to the next wall
+      const ribbonW = 2; // width in tiles
+      const colors = [R, T, M, C];
+
+      for (let si = 1; si < 5; si++) {
+        const sdata = state.surfaces[si];
+        const { cols, rows, grid, blocked } = sdata;
+        const color = colors[si - 1];
+
+        // Primary diagonal stripe
+        for (let c = 0; c < cols; c++) {
+          for (let w = 0; w < ribbonW; w++) {
+            // Diagonal going from bottom-left to top-right
+            const r = rows - 1 - Math.floor((c / cols) * rows * 0.7) - w;
+            if (r >= 0 && r < rows) {
+              const idx = r * cols + c;
+              if (!blocked[idx]) grid[idx] = color;
+            }
+            // Second ribbon, offset
+            const r2 = rows - 1 - Math.floor(((c + cols / 2) % cols) / cols * rows * 0.7) - w - 4;
+            if (r2 >= 0 && r2 < rows) {
+              const idx2 = r2 * cols + c;
+              if (!blocked[idx2]) grid[idx2] = colors[(si) % 4];
+            }
+          }
+        }
+      }
+
+      // Floor: X pattern with all 4 colors
+      const fd = state.surfaces[0];
+      drawThickLine(0, 0, 0, fd.cols - 1, fd.rows - 1, R, 2);
+      drawThickLine(0, fd.cols - 1, 0, 0, fd.rows - 1, T, 2);
+      // Horizontal and vertical center lines
+      const midC = Math.floor(fd.cols / 2), midR = Math.floor(fd.rows / 2);
+      drawLine(0, 0, midR, fd.cols - 1, midR, M);
+      drawLine(0, midC, 0, midC, fd.rows - 1, C);
+    },
+  },
+];
+
+function applyLinesTheme(index) {
+  LINES_THEMES[index].apply();
+  renderSurface();
+  render3D();
+  updateOrder();
+}
+
+function applyBeachTheme(index) {
+  BEACH_THEMES[index].apply();
+  renderSurface();
+  render3D();
+  updateOrder();
+}
 
 function applyRoomPreset(preset) {
   preset.apply();
@@ -1453,6 +1988,7 @@ function bindEvents() {
   // Export
   $("#export-png").addEventListener("click", exportPNG);
 
+
   // 3D rotation drag
   let dragStart = null;
   let yawStart = 0;
@@ -1524,6 +2060,92 @@ function bindEvents() {
   render3D();
 }
 
+// ── URL State ─────────────────────────────────────────────────────────────────
+
+function saveToURL() {
+  // Encode all 5 surface grids into one byte array
+  // Format: [grid0 bytes...][grid1 bytes...]...[grid4 bytes...]
+  // Each cell: 0-40 = color, 254 = NO_TILE, 255 = blocked (null)
+  let totalLen = 0;
+  state.surfaces.forEach((s) => { totalLen += s.grid.length; });
+  const bytes = new Uint8Array(totalLen);
+  let offset = 0;
+  state.surfaces.forEach((s) => {
+    s.grid.forEach((ci, i) => {
+      bytes[offset + i] = ci === NO_TILE ? 254 : (ci !== null ? ci : 255);
+    });
+    offset += s.grid.length;
+  });
+  const b64 = btoa(String.fromCharCode(...bytes));
+  const params = new URLSearchParams();
+  params.set("d", b64);
+  params.set("gc", state.groutColor);
+  params.set("gw", state.groutWidthMM);
+  history.replaceState(null, "", "?" + params.toString());
+}
+
+function loadFromURL() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has("d")) return false;
+  try {
+    if (params.has("gc")) state.groutColor = params.get("gc");
+    if (params.has("gw")) state.groutWidthMM = +params.get("gw") || 3.5;
+
+    // Decode grids — need to init surfaces first to know sizes
+    SURFACES.forEach((surf) => {
+      const pitch = pitchCM();
+      const cols = Math.ceil(surf.widthCM / pitch);
+      const rows = Math.ceil(surf.heightCM / pitch);
+      const grid = new Array(cols * rows).fill(state.baseColor);
+      const blocked = new Array(cols * rows).fill(false);
+      surf.obstructions.forEach((obs) => {
+        const c0 = Math.floor(obs.xCM / pitch);
+        const c1 = Math.ceil((obs.xCM + obs.wCM) / pitch);
+        const totalH = surf.heightCM;
+        const rTop = Math.floor((totalH - obs.yCM - obs.hCM) / pitch);
+        const rBot = Math.ceil((totalH - obs.yCM) / pitch);
+        for (let r = Math.max(0, rTop); r < Math.min(rows, rBot); r++) {
+          for (let c = Math.max(0, c0); c < Math.min(cols, c1); c++) {
+            blocked[r * cols + c] = true;
+            grid[r * cols + c] = null;
+          }
+        }
+      });
+      state.surfaces.push({ cols, rows, grid, blocked });
+    });
+
+    const str = atob(params.get("d"));
+    const bytes = new Uint8Array(str.length);
+    for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i);
+
+    let offset = 0;
+    state.surfaces.forEach((s) => {
+      for (let i = 0; i < s.grid.length; i++) {
+        if (s.blocked[i]) { offset++; continue; }
+        const b = bytes[offset++];
+        s.grid[i] = b === 255 ? null : b === 254 ? NO_TILE : b;
+      }
+    });
+
+    $("#grout-width").value = state.groutWidthMM;
+    $("#grout-width-label").textContent = state.groutWidthMM + " mm";
+    return true;
+  } catch { return false; }
+}
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-init();
+if (loadFromURL()) {
+  buildPalette();
+  buildGroutPalette();
+  buildSurfaceTabs();
+  buildRoomPresets();
+  buildPatternPresets();
+  updateBaseUI();
+  initPattern();
+  renderSurface();
+  render3D();
+  bindEvents();
+} else {
+  init();
+}
