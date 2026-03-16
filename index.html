@@ -24,6 +24,12 @@
         <h2>Colors</h2>
         <div id="palette" class="palette"></div>
         <div id="color-info" class="color-info">Select a color</div>
+        <div class="base-color-row">
+          <span class="base-label">Base</span>
+          <div id="base-swatch" class="base-swatch"></div>
+          <span id="base-info" class="base-info"></span>
+          <button id="set-base" class="set-base-btn" title="Set selected color as base">Set from selected</button>
+        </div>
       </section>
 
       <section class="panel">
@@ -110,11 +116,11 @@
           <div class="preview-dims">
             <label class="dim-label">
               W
-              <input type="number" id="preview-width" value="2.0" min="0.5" max="10" step="0.5"> m
+              <input type="number" id="preview-width" value="3.0" min="0.5" max="10" step="0.5"> m
             </label>
             <label class="dim-label">
               H
-              <input type="number" id="preview-height" value="2.0" min="0.5" max="10" step="0.5"> m
+              <input type="number" id="preview-height" value="3.0" min="0.5" max="10" step="0.5"> m
             </label>
           </div>
         </div>

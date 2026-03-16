@@ -71,13 +71,14 @@ let state = {
   rows: 6,
   grid: [],           // flat array of color indices (null = empty)
   selectedColor: 0,   // index into COLORS
+  baseColor: 20,       // index into COLORS (default: White #21)
   tool: "paint",
   mode: "pattern", // "pattern" or "freeform"
   groutColor: "#c8c8c8",
   groutWidthMM: 3.5, // mm (recommended 3-4mm)
 
-  previewW: 2.0,  // meters
-  previewH: 2.0,
+  previewW: 3.0,  // meters
+  previewH: 3.0,
   painting: false,
 };
 
@@ -100,6 +101,7 @@ function init() {
   buildPalette();
   buildGroutPalette();
   buildPresets();
+  updateBaseUI();
   initGrid();
   bindEvents();
   applyMode();
@@ -156,6 +158,14 @@ function updateColorInfo() {
   colorInfoEl.textContent = `${c.number} ${c.name} — ${c.code}`;
 }
 
+function updateBaseUI() {
+  const bc = COLORS[state.baseColor];
+  $("#base-swatch").style.backgroundColor = bc.hex;
+  if (isLight(bc.hex)) $("#base-swatch").style.boxShadow = "inset 0 0 0 1px rgba(0,0,0,0.15)";
+  else $("#base-swatch").style.boxShadow = "none";
+  $("#base-info").textContent = `${bc.number} ${bc.name}`;
+}
+
 function isLight(hex) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -200,8 +210,8 @@ function applyGrout() {
 // ── Grid ──────────────────────────────────────────────────────────────────────
 
 function initGrid() {
-  const { cols, rows } = state;
-  state.grid = new Array(cols * rows).fill(null);
+  const { cols, rows, baseColor } = state;
+  state.grid = new Array(cols * rows).fill(baseColor);
   renderGrid();
 }
 
@@ -246,19 +256,18 @@ function updateGridDims() {
 
 function setCellColor(cell, idx) {
   const ci = state.grid[idx];
-  if (ci !== null) {
-    cell.style.backgroundColor = COLORS[ci].hex;
-  } else {
-    cell.style.backgroundColor = "#ffffff";
-  }
+  cell.style.backgroundColor = ci !== null ? COLORS[ci].hex : COLORS[state.baseColor].hex;
 }
 
 function paintCell(idx) {
   const tool = state.tool;
   if (tool === "paint") {
-    state.grid[idx] = state.selectedColor;
+    // Toggle: if already this color, set to base
+    state.grid[idx] = (state.grid[idx] === state.selectedColor)
+      ? state.baseColor
+      : state.selectedColor;
   } else if (tool === "erase") {
-    state.grid[idx] = null;
+    state.grid[idx] = state.baseColor;
   } else if (tool === "fill") {
     floodFill(idx, state.grid[idx], state.selectedColor);
   } else if (tool === "eyedrop") {
@@ -382,7 +391,7 @@ function borderPreset() {
     const r = Math.floor(i / cols);
     const c = i % cols;
     if (r === 0 || r === rows - 1 || c === 0 || c === cols - 1) return c1;
-    return null;
+    return state.baseColor;
   });
 }
 
@@ -435,7 +444,7 @@ function renderPreview() {
       const pr = ty % rows;
       const pc = tx % cols;
       const ci = grid[pr * cols + pc];
-      previewCtx.fillStyle = ci !== null ? COLORS[ci].hex : "#ffffff";
+      previewCtx.fillStyle = COLORS[ci !== null ? ci : state.baseColor].hex;
       previewCtx.fillRect(
         gap + tx * (tileSize + gap),
         gap + ty * (tileSize + gap),
@@ -532,7 +541,7 @@ function exportPNG() {
     const r = Math.floor(i / cols);
     const c = i % cols;
     const ci = grid[i];
-    ctx.fillStyle = ci !== null ? COLORS[ci].hex : "#ffffff";
+    ctx.fillStyle = COLORS[ci !== null ? ci : state.baseColor].hex;
     ctx.fillRect(
       gap + c * (tileSize + gap),
       gap + r * (tileSize + gap),
@@ -575,6 +584,12 @@ function exportCSV() {
 // ── Event Binding ─────────────────────────────────────────────────────────────
 
 function bindEvents() {
+  // Set base color
+  $("#set-base").addEventListener("click", () => {
+    state.baseColor = state.selectedColor;
+    updateBaseUI();
+  });
+
   // Sidebar toggle
   $("#sidebar-toggle").addEventListener("click", () => {
     $(".sidebar").classList.toggle("collapsed");
@@ -587,8 +602,8 @@ function bindEvents() {
     e.preventDefault();
     state.painting = true;
     if (e.button === 2) {
-      // right-click erases
-      state.grid[+cell.dataset.idx] = null;
+      // right-click sets to base
+      state.grid[+cell.dataset.idx] = state.baseColor;
       refreshCells();
       renderPreview();
       updateOrder();
@@ -605,7 +620,7 @@ function bindEvents() {
     if (state.tool === "paint") {
       state.grid[idx] = state.selectedColor;
     } else if (state.tool === "erase") {
-      state.grid[idx] = null;
+      state.grid[idx] = state.baseColor;
     }
     setCellColor(cell, idx);
     renderPreview();
@@ -679,7 +694,7 @@ function bindEvents() {
 
   // Actions
   $("#clear-all").addEventListener("click", () => {
-    state.grid.fill(null);
+    state.grid.fill(state.baseColor);
     refreshCells();
     renderPreview();
     updateOrder();
