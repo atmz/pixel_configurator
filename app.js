@@ -46,11 +46,13 @@ const COLORS = [
   { number: "41", name: "Mint",       hex: "#b4d2bc", code: "4100839", grout: "KK 02 Avorio / MP 131 Vanilla" },
 ];
 
+const NO_TILE = -1; // sentinel for "no tile" / bare surface
+
 // Packing constants
 const TILES_PER_BOX = 28;
 const SQM_PER_BOX = 0.37;
 const KG_PER_BOX = 9.20;
-const WASTE_FACTOR = 1.08; // 8% waste
+const WASTE_FACTOR = 1.10; // 10% extra
 
 // Grout color options
 const GROUT_COLORS = [
@@ -111,6 +113,7 @@ function applyMode() {
   const isFreeform = state.mode === "freeform";
   $(".preview-section").classList.toggle("hidden", isFreeform);
   $("#grid-controls-tiles").classList.toggle("hidden", isFreeform);
+  $("#pattern-dims").classList.toggle("hidden", isFreeform);
   $("#freeform-dims").classList.toggle("hidden", !isFreeform);
   $(".editor-section h2").innerHTML = isFreeform
     ? 'Freeform Editor <span class="hint">Paint your exact surface</span>'
@@ -122,11 +125,20 @@ function applyMode() {
 
 function buildPalette() {
   paletteEl.innerHTML = "";
+
+  // "No Tile" swatch first
+  const noTile = document.createElement("div");
+  noTile.className = "swatch no-tile-swatch" + (state.selectedColor === NO_TILE ? " selected" : "");
+  noTile.title = "No Tile";
+  noTile.addEventListener("click", () => selectColor(NO_TILE));
+  noTile.addEventListener("mouseenter", () => { colorInfoEl.textContent = "No Tile — bare surface"; });
+  noTile.addEventListener("mouseleave", () => updateColorInfo());
+  paletteEl.appendChild(noTile);
+
   COLORS.forEach((c, i) => {
     const el = document.createElement("div");
     el.className = "swatch" + (i === state.selectedColor ? " selected" : "");
     el.style.backgroundColor = c.hex;
-    // ensure light colors have a subtle border
     if (isLight(c.hex)) el.style.boxShadow = "inset 0 0 0 1px rgba(0,0,0,0.15)";
     el.title = `${c.number} ${c.name}`;
     el.dataset.index = i;
@@ -134,10 +146,7 @@ function buildPalette() {
     el.addEventListener("mouseenter", () => {
       colorInfoEl.textContent = `${c.number} ${c.name} — ${c.code}`;
     });
-    el.addEventListener("mouseleave", () => {
-      const sel = COLORS[state.selectedColor];
-      colorInfoEl.textContent = `${sel.number} ${sel.name} — ${sel.code}`;
-    });
+    el.addEventListener("mouseleave", () => updateColorInfo());
     paletteEl.appendChild(el);
   });
   updateColorInfo();
@@ -146,24 +155,41 @@ function buildPalette() {
 function selectColor(i) {
   state.selectedColor = i;
   if (state.tool === "erase") state.tool = "paint";
-  paletteEl.querySelectorAll(".swatch").forEach((el, idx) => {
-    el.classList.toggle("selected", idx === i);
+  // First child is "no tile" swatch, rest are color swatches
+  const swatches = paletteEl.querySelectorAll(".swatch");
+  swatches.forEach((el, idx) => {
+    const swatchIdx = idx === 0 ? NO_TILE : idx - 1;
+    el.classList.toggle("selected", swatchIdx === i);
   });
   updateToolButtons();
   updateColorInfo();
 }
 
+function colorHex(ci) {
+  return ci === NO_TILE ? null : COLORS[ci].hex;
+}
+
 function updateColorInfo() {
-  const c = COLORS[state.selectedColor];
-  colorInfoEl.textContent = `${c.number} ${c.name} — ${c.code}`;
+  if (state.selectedColor === NO_TILE) {
+    colorInfoEl.textContent = "No Tile — bare surface";
+  } else {
+    const c = COLORS[state.selectedColor];
+    colorInfoEl.textContent = `${c.number} ${c.name} — ${c.code}`;
+  }
 }
 
 function updateBaseUI() {
-  const bc = COLORS[state.baseColor];
-  $("#base-swatch").style.backgroundColor = bc.hex;
-  if (isLight(bc.hex)) $("#base-swatch").style.boxShadow = "inset 0 0 0 1px rgba(0,0,0,0.15)";
-  else $("#base-swatch").style.boxShadow = "none";
-  $("#base-info").textContent = `${bc.number} ${bc.name}`;
+  if (state.baseColor === NO_TILE) {
+    $("#base-swatch").style.backgroundColor = "transparent";
+    $("#base-swatch").className = "base-swatch no-tile-swatch";
+    $("#base-info").textContent = "No Tile";
+  } else {
+    const bc = COLORS[state.baseColor];
+    $("#base-swatch").className = "base-swatch";
+    $("#base-swatch").style.backgroundColor = bc.hex;
+    $("#base-swatch").style.boxShadow = isLight(bc.hex) ? "inset 0 0 0 1px rgba(0,0,0,0.15)" : "none";
+    $("#base-info").textContent = `${bc.number} ${bc.name}`;
+  }
 }
 
 function isLight(hex) {
@@ -256,7 +282,13 @@ function updateGridDims() {
 
 function setCellColor(cell, idx) {
   const ci = state.grid[idx];
-  cell.style.backgroundColor = ci !== null ? COLORS[ci].hex : COLORS[state.baseColor].hex;
+  if (ci === NO_TILE) {
+    cell.style.backgroundColor = "transparent";
+    cell.classList.add("no-tile-cell");
+  } else {
+    cell.style.backgroundColor = COLORS[ci].hex;
+    cell.classList.remove("no-tile-cell");
+  }
 }
 
 function paintCell(idx) {
@@ -444,7 +476,8 @@ function renderPreview() {
       const pr = ty % rows;
       const pc = tx % cols;
       const ci = grid[pr * cols + pc];
-      previewCtx.fillStyle = COLORS[ci !== null ? ci : state.baseColor].hex;
+      if (ci === NO_TILE) continue; // no tile = show grout background
+      previewCtx.fillStyle = COLORS[ci].hex;
       previewCtx.fillRect(
         gap + tx * (tileSize + gap),
         gap + ty * (tileSize + gap),
@@ -461,7 +494,7 @@ function updateOrder() {
   saveToURL();
   const counts = {};
   state.grid.forEach((ci) => {
-    if (ci === null) return;
+    if (ci === null || ci === NO_TILE) return;
     counts[ci] = (counts[ci] || 0) + 1;
   });
 
@@ -478,8 +511,10 @@ function updateOrder() {
 
   entries.forEach(([ci, count]) => {
     const color = COLORS[+ci];
-    const tilesWithWaste = Math.ceil(count * WASTE_FACTOR);
-    const boxes = Math.ceil(tilesWithWaste / TILES_PER_BOX);
+    const tilesNeeded = Math.ceil(count * WASTE_FACTOR);
+    const boxes = Math.ceil(tilesNeeded / TILES_PER_BOX);
+    const tilesInBoxes = boxes * TILES_PER_BOX;
+    const surplusPct = ((tilesInBoxes / count - 1) * 100).toFixed(0);
     totalTiles += count;
     totalBoxes += boxes;
     groutSets.add(color.grout);
@@ -490,7 +525,7 @@ function updateOrder() {
       <td>${color.number} ${color.name}</td>
       <td>${color.code}</td>
       <td>${count}</td>
-      <td>${boxes}</td>
+      <td>${boxes} <span style="color:var(--text-muted);font-size:0.75rem">(${tilesInBoxes} pcs, +${surplusPct}%)</span></td>
       <td>${color.grout}</td>
     `;
     tbody.appendChild(tr);
@@ -512,7 +547,7 @@ function updateOrder() {
   const chosenGroutName = chosenGrout ? chosenGrout.name : state.groutColor;
 
   meta.innerHTML = totalTiles > 0
-    ? `Coverage: <strong>${totalSqm} m²</strong> &middot; Weight: <strong>${totalWeight} kg</strong> &middot; Joint: <strong>${state.groutWidthMM} mm</strong><br>Grout chosen: <strong>${chosenGroutName}</strong> <span class="swatch-cell" style="width:12px;height:12px;vertical-align:middle;background:${state.groutColor}${isLight(state.groutColor) ? ';box-shadow:inset 0 0 0 1px rgba(0,0,0,0.2)' : ''}"></span> &middot; Includes 8% waste factor for box calculation`
+    ? `Coverage: <strong>${totalSqm} m²</strong> &middot; Weight: <strong>${totalWeight} kg</strong> &middot; Joint: <strong>${state.groutWidthMM} mm</strong><br>Grout chosen: <strong>${chosenGroutName}</strong> <span class="swatch-cell" style="width:12px;height:12px;vertical-align:middle;background:${state.groutColor}${isLight(state.groutColor) ? ';box-shadow:inset 0 0 0 1px rgba(0,0,0,0.2)' : ''}"></span> &middot; Boxes rounded up with min 10% extra`
     : "Paint some tiles to see your order summary.";
 
   groutRec.innerHTML = groutSets.size > 0
@@ -541,7 +576,8 @@ function exportPNG() {
     const r = Math.floor(i / cols);
     const c = i % cols;
     const ci = grid[i];
-    ctx.fillStyle = COLORS[ci !== null ? ci : state.baseColor].hex;
+    if (ci === NO_TILE) continue;
+    ctx.fillStyle = COLORS[ci].hex;
     ctx.fillRect(
       gap + c * (tileSize + gap),
       gap + r * (tileSize + gap),
@@ -559,7 +595,7 @@ function exportPNG() {
 function exportCSV() {
   const counts = {};
   state.grid.forEach((ci) => {
-    if (ci === null) return;
+    if (ci === null || ci === NO_TILE) return;
     counts[ci] = (counts[ci] || 0) + 1;
   });
 
@@ -663,16 +699,21 @@ function bindEvents() {
     });
   });
 
-  // Grid size
-  $("#apply-size").addEventListener("click", () => {
-    const cols = Math.min(32, Math.max(2, +$("#cols").value || 6));
-    const rows = Math.min(32, Math.max(2, +$("#rows").value || 6));
+  // Grid size (both sidebar and inline)
+  function applyGridSize(colsInput, rowsInput) {
+    const cols = Math.min(32, Math.max(2, +colsInput.value || 6));
+    const rows = Math.min(32, Math.max(2, +rowsInput.value || 6));
+    // sync both sets of inputs
     $("#cols").value = cols;
     $("#rows").value = rows;
+    $("#cols-inline").value = cols;
+    $("#rows-inline").value = rows;
     state.cols = cols;
     state.rows = rows;
     initGrid();
-  });
+  }
+  $("#apply-size").addEventListener("click", () => applyGridSize($("#cols"), $("#rows")));
+  $("#apply-size-inline").addEventListener("click", () => applyGridSize($("#cols-inline"), $("#rows-inline")));
 
   // Grout width
   $("#grout-width").addEventListener("input", (e) => {
@@ -742,7 +783,7 @@ function saveToURL() {
   const { cols, rows, grid, groutColor, groutWidthMM } = state;
   // Encode grid as base64: each cell is a byte (0-40 = color index, 255 = empty)
   const bytes = new Uint8Array(grid.length);
-  grid.forEach((ci, i) => { bytes[i] = ci !== null ? ci : 255; });
+  grid.forEach((ci, i) => { bytes[i] = ci === NO_TILE ? 254 : (ci !== null ? ci : 255); });
   const b64 = btoa(String.fromCharCode(...bytes));
   const params = new URLSearchParams();
   params.set("c", cols);
@@ -765,7 +806,7 @@ function loadFromURL() {
     for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i);
     state.cols = cols;
     state.rows = rows;
-    state.grid = Array.from(bytes).map((b) => b === 255 ? null : b);
+    state.grid = Array.from(bytes).map((b) => b === 255 ? null : b === 254 ? NO_TILE : b);
     // pad or trim if size doesn't match
     const expected = cols * rows;
     if (state.grid.length < expected) {

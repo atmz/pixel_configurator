@@ -61,6 +61,7 @@ header h1 {
 
 .header-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
@@ -154,6 +155,14 @@ main {
   box-shadow: 0 0 0 1px var(--accent);
   transform: scale(1.1);
   z-index: 1;
+}
+
+.no-tile-swatch {
+  background: repeating-conic-gradient(#555 0% 25%, #333 0% 50%) 50% / 8px 8px;
+}
+
+.no-tile-cell {
+  background: repeating-conic-gradient(#888 0% 25%, #666 0% 50%) 50% / 8px 8px !important;
 }
 
 .color-info {
@@ -460,8 +469,10 @@ main {
   margin-bottom: 0;
 }
 
-.preview-dims {
+.preview-dims,
+.editor-dims {
   display: flex;
+  align-items: center;
   gap: 10px;
 }
 

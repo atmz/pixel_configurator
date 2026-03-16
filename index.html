@@ -13,6 +13,10 @@
       <h1>Pixel41 Tile Configurator</h1>
     </div>
     <div class="header-actions">
+      <div class="mode-toggle">
+        <button class="mode-btn active" data-mode="pattern">Pattern</button>
+        <button class="mode-btn" data-mode="freeform">Freeform</button>
+      </div>
       <button id="export-png" title="Export pattern as PNG">Export PNG</button>
       <button id="export-csv" title="Export order summary as CSV">Export CSV</button>
     </div>
@@ -40,14 +44,6 @@
           <input type="range" id="grout-width" min="0" max="8" value="3.5" step="0.5">
           <span id="grout-width-label">3.5 mm</span>
         </label>
-      </section>
-
-      <section class="panel">
-        <h2>Mode</h2>
-        <div class="mode-toggle">
-          <button class="mode-btn active" data-mode="pattern">Pattern</button>
-          <button class="mode-btn" data-mode="freeform">Freeform</button>
-        </div>
       </section>
 
       <section class="panel">
@@ -94,7 +90,18 @@
       <section class="editor-section">
         <div class="editor-header">
           <h2>Pattern Editor <span class="hint">Click/drag to paint</span></h2>
-          <div class="preview-dims hidden" id="freeform-dims">
+          <div class="editor-dims" id="pattern-dims">
+            <label class="dim-label">
+              Cols
+              <input type="number" id="cols-inline" value="6" min="2" max="32">
+            </label>
+            <label class="dim-label">
+              Rows
+              <input type="number" id="rows-inline" value="6" min="2" max="32">
+            </label>
+            <button id="apply-size-inline" class="apply-meters-btn">Apply</button>
+          </div>
+          <div class="editor-dims hidden" id="freeform-dims">
             <label class="dim-label">
               W
               <input type="number" id="free-width" value="1.0" min="0.2" max="5" step="0.1"> m
